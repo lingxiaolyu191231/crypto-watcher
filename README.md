@@ -18,7 +18,7 @@ Currently, the repo includes two pipelines:
   SMA, RSI, Bollinger Bands, ADX, custom scoring logic.
 
 - **Alerts**  
-  Threshold-based buy/sell signals. Optional email notifications.
+  Threshold-based buy/sell signals. Enforced email notifications.
 
 - **Validation**  
   Ensures no duplicate timestamps; data is append-only.
