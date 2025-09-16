@@ -29,6 +29,7 @@ Currently, the repo includes two pipelines:
 ---
 
 ## 📂 Repo Structure
+
 .
 ├── hype_pipeline/ # full HYPE pipeline
 │ ├── apps/ # email_alerts, indicators, watchlist
@@ -51,13 +52,13 @@ cd cryptowatcher/hype_pipeline
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r apps/email_alerts/requirements.txt
 
-📬 Alerts
+## 📬 Alerts
 
 Watchlist reports are emailed hourly (latest data only).
 HYPE Alerts (buy/sell) are highlighted in subject lines.
 Status emails are sent only on failure (success emails disabled by default).
 
-⚠️ Notes
+## ⚠️ Notes
 
 Secrets: .env file holds API keys & SMTP credentials. It is git-ignored — create your own based on .env.example.
 Append-only: ingestion is safe against duplicates and resumes from the last timestamp.
