@@ -30,13 +30,8 @@ Currently, the repo includes two pipelines:
 
 ## 📂 Repo Structure
 
-- `hype_pipeline/` — full HYPE pipeline  
-  - `apps/` — email_alerts, indicators, watchlist  
-  - `data/` — local CSVs (ignored by git)  
-  - `scripts/` — bootstrap + pipeline.sh  
-  - `services/` — ingestion code  
-- `btc_pipeline/` — BTC pipeline (hourly ingestion + indicators)  
-  - `services/` — ingestion code  
+- `hype_pipeline/` — full HYPE pipeline (hourly) 
+- `btc_pipeline/` — BTC pipeline (daily) 
 - `README.md` — this file  
 
 
