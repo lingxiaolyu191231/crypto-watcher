@@ -1,0 +1,25 @@
+version: 2
+
+sources:
+  - name: hype
+    tables:
+      - name: indicators_hourly
+        description: Hourly OHLCV and indicators used to derive hype alerts.
+
+models:
+  - name: hype_alerts
+    description: |
+      Buy/sell alerts derived from hourly indicators with simple smoothing,
+      confirmations, and 12-hour cooldown.
+    columns:
+      - name: ts
+        tests: [not_null]
+      - name: symbol
+        tests: [not_null]
+      - name: close
+      - name: buy_alert
+        tests: [not_null]
+      - name: sell_alert
+        tests: [not_null]
+      - name: alert_confidence
+      - name: alert_reasons

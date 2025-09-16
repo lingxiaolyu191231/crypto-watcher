@@ -1,0 +1,52 @@
+.env:3: .env: Too many open files
+.env:8: *** missing separator.  Stop.
+.env:3: .env: Too many open files
+.env:8: *** missing separator.  Stop.
+.env:3: .env: Too many open files
+.env:8: *** missing separator.  Stop.
+Makefile:48: warning: overriding commands for target `clean'
+Makefile:13: warning: ignoring old commands for target `clean'
+BINANCE_API=https://api.binance.us \
+	SYMBOL=BTCUSDT INTERVAL=1d START_ISO=2019-09-24T00:00:00Z DATA_DIR=/Users/lingxiaolyu/projects/btc_pipeline/data \
+	python3 services/trade_data/daily_trade_data.py
+Traceback (most recent call last):
+  File "/Users/lingxiaolyu/projects/btc_pipeline/services/trade_data/daily_trade_data.py", line 22, in <module>
+    import requests
+ModuleNotFoundError: No module named 'requests'
+make: *** [daily] Error 1
+mkdir -p /Users/lingxiaolyu/projects/btc_pipeline/data
+mkdir -p logs
+BINANCE_API=https://api.binance.us \
+	SYMBOL=BTCUSDT INTERVAL=1d START_ISO=2017-08-17T00:00:00Z DATA_DIR=/Users/lingxiaolyu/projects/btc_pipeline/data \
+	/Users/lingxiaolyu/projects/btc_pipeline/.venv/bin/python3 services/trade_data/daily_trade_data.py
+[BACKFILL] Resuming from 2025-09-16T00:00:00+00:00
+[BACKFILL] complete -> /Users/lingxiaolyu/projects/btc_pipeline/data/daily.csv
+DATA_DIR=/Users/lingxiaolyu/projects/btc_pipeline/data /Users/lingxiaolyu/projects/btc_pipeline/.venv/bin/python3 services/indicators_daily.py
+Wrote: /Users/lingxiaolyu/projects/btc_pipeline/data/daily_with_indicators.csv
+Latest signal: /Users/lingxiaolyu/projects/btc_pipeline/data/latest_signal.csv
+DATA_DIR=/Users/lingxiaolyu/projects/btc_pipeline/data /Users/lingxiaolyu/projects/btc_pipeline/.venv/bin/python3 services/watchlist_daily.py
+Wrote: /Users/lingxiaolyu/projects/btc_pipeline/data/signal_watchlist.csv | strategy=balanced | action=RISK_OFF (cash)
+EMAIL_TO=cryptowatcher689@gmail.com DATA_DIR=/Users/lingxiaolyu/projects/btc_pipeline/data /Users/lingxiaolyu/projects/btc_pipeline/.venv/bin/python3 services/email_daily.py
+Email sent to cryptowatcher689@gmail.com: [BTC Daily CheckIn] [balanced] – 2025-09-15T00:00:00+00:00 – RISK_OFF (cash) (score=3)
+DATA_DIR=/Users/lingxiaolyu/projects/btc_pipeline/data /Users/lingxiaolyu/projects/btc_pipeline/.venv/bin/python3 services/backtest_daily.py
+Wrote backtest results to /Users/lingxiaolyu/projects/btc_pipeline/data/backtests/summary.csv
+DATA_DIR=/Users/lingxiaolyu/projects/btc_pipeline/data /Users/lingxiaolyu/projects/btc_pipeline/.venv/bin/python3 services/auto_select_strategy.py
+[AUTO-SELECT] keep 'balanced'. Best candidate: balanced (Sharpe=1.55).
+mkdir -p /Users/lingxiaolyu/projects/btc_pipeline/data
+mkdir -p logs
+BINANCE_API=https://api.binance.us \
+	SYMBOL=BTCUSDT INTERVAL=1d START_ISO=2017-08-17T00:00:00Z DATA_DIR=/Users/lingxiaolyu/projects/btc_pipeline/data \
+	/Users/lingxiaolyu/projects/btc_pipeline/.venv/bin/python3 services/trade_data/daily_trade_data.py
+[BACKFILL] Resuming from 2025-09-16T00:00:00+00:00
+[BACKFILL] complete -> /Users/lingxiaolyu/projects/btc_pipeline/data/daily.csv
+DATA_DIR=/Users/lingxiaolyu/projects/btc_pipeline/data /Users/lingxiaolyu/projects/btc_pipeline/.venv/bin/python3 services/indicators_daily.py
+Wrote: /Users/lingxiaolyu/projects/btc_pipeline/data/daily_with_indicators.csv
+Latest signal: /Users/lingxiaolyu/projects/btc_pipeline/data/latest_signal.csv
+DATA_DIR=/Users/lingxiaolyu/projects/btc_pipeline/data /Users/lingxiaolyu/projects/btc_pipeline/.venv/bin/python3 services/watchlist_daily.py
+Wrote: /Users/lingxiaolyu/projects/btc_pipeline/data/signal_watchlist.csv | strategy=balanced | action=RISK_OFF (cash)
+EMAIL_TO=cryptowatcher689@gmail.com DATA_DIR=/Users/lingxiaolyu/projects/btc_pipeline/data /Users/lingxiaolyu/projects/btc_pipeline/.venv/bin/python3 services/email_daily.py
+Email sent to cryptowatcher689@gmail.com: [BTC Daily CheckIn] [balanced] – 2025-09-16T00:00:00+00:00 – RISK_OFF (cash) (score=3)
+DATA_DIR=/Users/lingxiaolyu/projects/btc_pipeline/data /Users/lingxiaolyu/projects/btc_pipeline/.venv/bin/python3 services/backtest_daily.py
+Wrote backtest results to /Users/lingxiaolyu/projects/btc_pipeline/data/backtests/summary.csv
+DATA_DIR=/Users/lingxiaolyu/projects/btc_pipeline/data /Users/lingxiaolyu/projects/btc_pipeline/.venv/bin/python3 services/auto_select_strategy.py
+[AUTO-SELECT] keep 'balanced'. Best candidate: balanced (Sharpe=1.56).

@@ -1,0 +1,4 @@
+name,sell_T,atr_q,boll_k,sized,Total Return %,CAGR %,MaxDD %,Sharpe,Final $,BH Final $,BH MaxDD %
+conservative,-2,0.5,2.0,True,186.76,19.24,-21.6,0.91,28675.8,135547.28,-76.63
+balanced,-3,0.7,2.0,True,94.04,11.71,-56.14,0.51,19403.53,135547.28,-76.63
+aggressive,-4,,,False,1255.47,54.57,-76.63,1.02,135547.28,135547.28,-76.63

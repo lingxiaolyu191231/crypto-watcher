@@ -1,0 +1,2 @@
+.env: line 2: syntax error near unexpected token `,$(wildcard .env)'
+.env: line 2: `ifneq (,$(wildcard .env))'

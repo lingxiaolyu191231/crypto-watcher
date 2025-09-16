@@ -1,0 +1,29 @@
+selected: balanced
+
+strategies:
+  conservative:
+    sell_threshold: -2
+    score_col: score_enriched
+    atr_q: 0.50
+    boll_k: 2.0
+    adx_min: 20        # require trend strength
+    donchian_n: 20     # require breakout to be long
+    sized: true
+
+  balanced:
+    sell_threshold: -3
+    score_col: score_enriched
+    atr_q: 0.70
+    boll_k: 2.0
+    adx_min: 20
+    donchian_n: null
+    sized: true
+
+  aggressive:
+    sell_threshold: -4
+    score_col: score         # use original score
+    atr_q: null
+    boll_k: null
+    adx_min: null
+    donchian_n: null
+    sized: false
