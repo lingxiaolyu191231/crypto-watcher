@@ -1,0 +1,25 @@
+# Python virtual environments
+.venv/
+*/.venv/
+
+# Bytecode and cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs
+*.log
+*.out
+*.err
+
+# Data files (local CSVs, can be regenerated)
+data/*.csv
+
+# Local configs / secrets
+.env
+
+# IDE / editor settings
+.vscode/
+.idea/
+

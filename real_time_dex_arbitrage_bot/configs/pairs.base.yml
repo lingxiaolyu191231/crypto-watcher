@@ -1,0 +1,13 @@
+pairs:
+  - [USDC, USDT]
+
+sizes:
+  - 1000
+  - 5000
+  - 10000
+
+# Try these DEX pools through 0x
+sources:
+  - Uniswap_V3
+  - Balancer_V2
+  - SushiSwap

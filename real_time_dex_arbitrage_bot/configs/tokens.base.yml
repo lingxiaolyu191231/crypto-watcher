@@ -1,0 +1,18 @@
+# IMPORTANT: confirm addresses before use. You can replace with your own list.
+# For Base mainnet (chainId 8453). The addresses below are placeholders — confirm!
+# USDC (native) and USDT addresses frequently used on Base:
+# USDC (native): 0x833589fCD... (double-check full address)
+# USDT: 0xd9aAEc97... (double-check full address)
+
+
+chain_id: 8453
+symbols:
+  USDC:
+    address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" # VERIFY
+    decimals: 6
+  USDT:
+    address: "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2" # VERIFY
+    decimals: 6
+  WETH:
+    address: "0x4200000000000000000000000000000000000006"
+    decimals: 18
