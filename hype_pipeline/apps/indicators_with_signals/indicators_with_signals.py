@@ -28,8 +28,17 @@ def main():
     df=pd.read_csv(INPUT)
     for c in ["open","high","low","close","volume","trades_count","vwap"]:
         if c in df.columns: df[c]=pd.to_numeric(df[c],errors="coerce")
-    if "hour_start_iso" in df.columns: df["hour_start_iso"]=pd.to_datetime(df["hour_start_iso"],utc=True,errors="coerce")
-    df=df.sort_values("hour_start_ms").reset_index(drop=True)
+        
+    if "hour_start_iso" in df.columns:
+        df["hour_start_iso"] = pd.to_datetime(df["hour_start_iso"], utc=True, errors="coerce")
+        df["hour_start_iso"] = df["hour_start_iso"].dt.floor("h")   # <-- add this line
+    else:
+        # If no column, derive from ms if available
+        if "hour_start_ms" in df.columns:
+            df["hour_start_iso"] = pd.to_datetime(df["hour_start_ms"], unit="ms", utc=True).dt.floor("h")
+
+    sort_col = "hour_start_ms" if "hour_start_ms" in df.columns else "hour_start_iso"
+    df = df.sort_values(sort_col).reset_index(drop=True)
     df["sma_10"]=df["close"].rolling(10,min_periods=1).mean()
     df["sma_20"]=df["close"].rolling(20,min_periods=1).mean()
     df["sma_50"]=df["close"].rolling(50,min_periods=1).mean()
@@ -40,8 +49,22 @@ def main():
     bb_mid,bb_up,bb_lo,bb_std=bollinger(df["close"],20,2.0)
     df["bb_mid_20"],df["bb_up_20_2"],df["bb_lo_20_2"],df["bb_std_20"]=bb_mid,bb_up,bb_lo,bb_std
     df["bb_percent_b"]=(df["close"]-df["bb_lo_20_2"])/(df["bb_up_20_2"]-df["bb_lo_20_2"]).replace(0,np.nan)
-    df["atr_14"]=atr(df,14); df["obv"]=obv(df["close"],df["volume"])
-    df["vwap_24h"]=rolling_vwap(df["close"],df["volume"],24); df["vwap_72h"]=rolling_vwap(df["close"],df["volume"],72)
+    # ATR needs high/low; if missing, fill with NaN
+    if {"high","low","close"}.issubset(df.columns):
+        df["atr_14"] = atr(df,14)
+    else:
+        df["atr_14"] = pd.Series(np.nan, index=df.index)
+
+    # OBV & VWAP need volume; if missing, fill with NaN
+    if "volume" in df.columns:
+        df["obv"] = obv(df["close"], df["volume"])
+        df["vwap_24h"] = rolling_vwap(df["close"], df["volume"], 24)
+        df["vwap_72h"] = rolling_vwap(df["close"], df["volume"], 72)
+    else:
+        df["obv"] = pd.Series(np.nan, index=df.index)
+        df["vwap_24h"] = pd.Series(np.nan, index=df.index)
+        df["vwap_72h"] = pd.Series(np.nan, index=df.index)
+
     df["ret_1h"]=df["close"].pct_change(1); df["ret_24h"]=df["close"].pct_change(24)
     rm=df["close"].rolling(24,min_periods=1).mean(); rs=df["close"].rolling(24,min_periods=1).std(ddof=0)
     df["zscore_24h"]=(df["close"]-rm)/rs.replace(0,np.nan)

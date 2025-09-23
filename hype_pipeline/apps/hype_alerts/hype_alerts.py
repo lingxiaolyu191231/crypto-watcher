@@ -39,6 +39,14 @@ from typing import Optional, Tuple
 import pandas as pd
 import numpy as np
 
+def to_utc_series(x):
+    # robust utc parsing for strings/naive timestamps
+    return pd.to_datetime(x, utc=True, errors="coerce")
+
+def hour_bucket(ts_series):
+    # floor to hour, always UTC
+    return ts_series.dt.floor("h")
+
 BUY_THR_DEFAULT = -2.75
 SELL_THR_DEFAULT = 0.75
 SCORE_EMA_ALPHA_DEFAULT = 0.4
@@ -225,7 +233,9 @@ def main():
     if "ts" not in df.columns and "hour_start_iso" in df.columns:
         df = df.rename(columns={"hour_start_iso":"ts"})
     df["ts"] = pd.to_datetime(df["ts"], errors="coerce")
-
+    df["ts"] = to_utc_series(df["ts"])
+    df["ts_hour"] = hour_bucket(df["ts"])
+    
     alerts = generate_alerts(
         df,
         buy_thr=args.buy_thr,
@@ -239,6 +249,7 @@ def main():
     keep_cols = ["ts","close","signal_score","score_smooth","rsi_14","bb_pctB","funding_bps","bull_regime",
                  "buy_alert","sell_alert","alert_confidence","alert_reasons"]
     existing = [c for c in keep_cols if c in alerts.columns]
+    
     alerts[existing].to_csv(args.output, index=False)
 
     # Optional BigQuery write

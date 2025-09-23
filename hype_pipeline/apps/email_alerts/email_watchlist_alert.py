@@ -2,36 +2,84 @@
 """
 email_watchlist_alert.py
 ------------------------
-Sends the watchlist email AND appends a section summarizing BUY/SELL alerts
-from data/hype_alerts.csv.
 
-Key behavior:
-- Watchlist: by default, show ONLY the latest hour (set WATCHLIST_ONLY_LATEST=0 to show a tail).
-- HYPE Alerts: by default, show ONLY the latest hour (set ALERT_ONLY_LATEST=0 to show a tail).
-- Subject: adds "[HYPE Alerts]" ONLY if the latest hour actually contains qualifying alerts.
+What it sends:
+1) === Watchlist ===
+   - Latest hour from your watchlist file, showing hour_start_iso, close, signal_score, reasons
+2) === HYPE Alerts (last N h) ===
+   - All qualifying alerts in the past ALERT_LOOKBACK_HOURS (default 24h)
+
+Qualifying alert = (buy_alert==1 or sell_alert==1) OR (signal_score crosses BUY/SELL thresholds)
+                   AND (if alert_confidence column exists) alert_confidence >= ALERT_MIN_CONF
+
+Env vars (common ones):
+  INPUT=path/to/watchlist.csv                  (default: data/watchlist.csv)
+  DATA_DIR=/base/dir/for/relative/paths
+  ALERTS_FILE=hype_alerts.csv                  (relative to DATA_DIR unless absolute)
+  INCLUDE_COLUMNS="hour_start_iso,close,signal_score,reasons"  (watchlist visible cols)
+
+  ALERT_ONLY_LATEST=0                          (set to 0 to use 24h window)
+  ALERT_LOOKBACK_HOURS=24
+  BUY_THR=-3
+  SELL_THR=3
+  ALERT_MIN_CONF=0
+
+  SUBJECT_PREFIX="[HYPE Watchlist]"
+  STATE=/tmp/watch_email_state.json            (optional dedupe by body hash)
+
+  SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_STARTTLS
+  FROM, TO
+
+Debug:
+  DEBUG=1  -> prints chosen hour & counts
 """
+
 import os, sys, json, smtplib, hashlib
 from email.mime.text import MIMEText
 from datetime import datetime, timezone
 from pathlib import Path
+
 import pandas as pd
 
 
-def env(key, default=None):
+# ---------- helpers ----------
+def env(key: str, default: str | None = None) -> str | None:
     return os.getenv(key, default)
 
 
-def _fmt_table(df, cols=None, max_rows=200):
+def _fmt_table(df: pd.DataFrame, cols: str | None, max_rows: int = 200) -> str:
     if cols:
-        keep = [c for c in (c.strip() for c in cols.split(",")) if c in df.columns]
+        keep = [c.strip() for c in cols.split(",") if c.strip() in df.columns]
         if keep:
             df = df[keep]
     if len(df) > max_rows:
         df = df.tail(max_rows)
+    # pretty string; rely on pandas defaults for spacing
     return df.to_string(index=False, max_colwidth=80)
 
 
+def _latest_hour_of_watchlist(path: Path):
+    try:
+        df = pd.read_csv(path, parse_dates=["hour_start_iso"])
+    except Exception:
+        return None
+    if df.empty:
+        return None
+    return df["hour_start_iso"].dt.floor("h").max()
+
+
+def _latest_hour_of_alerts(path: Path):
+    try:
+        df = pd.read_csv(path, parse_dates=["ts"])
+    except Exception:
+        return None
+    if df.empty:
+        return None
+    return pd.to_datetime(df["ts"], utc=True, errors="coerce").dt.floor("h").max()
+
+
 def _load_watchlist(input_csv: Path, force_hour=None) -> str:
+    """Show watchlist rows for the chosen hour (or latest if not forced)."""
     if not input_csv.exists():
         return "(watchlist file not found)"
     try:
@@ -39,18 +87,14 @@ def _load_watchlist(input_csv: Path, force_hour=None) -> str:
     except Exception as e:
         return f"(failed to read watchlist: {e})"
 
-    ts_col = None
-    for c in ("hour_start_iso", "ts", "timestamp", "time"):
-        if c in df.columns:
-            ts_col = c
-            break
-
-    include_cols = env("INCLUDE_COLUMNS", "")
-    max_rows = int(env("MAX_ROWS", "50"))
+    ts_col = "hour_start_iso" if "hour_start_iso" in df.columns else None
+    include_cols = env("INCLUDE_COLUMNS", "hour_start_iso,close,signal_score,reasons")
 
     if ts_col is None:
-        return _fmt_table(df.tail(max_rows), include_cols)
+        # fallback: just show tail
+        return _fmt_table(df.tail(20), include_cols)
 
+    # normalize
     df[ts_col] = pd.to_datetime(df[ts_col], utc=True, errors="coerce")
     df = df[df[ts_col].notna()].copy()
     if df.empty:
@@ -59,22 +103,18 @@ def _load_watchlist(input_csv: Path, force_hour=None) -> str:
     target = (force_hour or df[ts_col].dt.floor("h").max())
     latest = df[df[ts_col].dt.floor("h") == target].copy()
 
+    note = ""
     if latest.empty and force_hour is not None:
-        return f"(no watchlist rows for {target.strftime('%Y-%m-%d %H:%MZ')})"
+        # fallback to most recent available hour in watchlist
+        target = df[ts_col].dt.floor("h").max()
+        latest = df[df[ts_col].dt.floor("h") == target].copy()
+        if not latest.empty:
+            note = f"(no watchlist rows at requested hour; showing {target.strftime('%Y-%m-%d %H:%MZ')})\n"
+
     if latest.empty:
-        latest = df.sort_values(ts_col).tail(max_rows)
+        return f"(no watchlist rows found at any hour)"
 
-    return _fmt_table(latest, include_cols, max_rows=len(latest))
-
-
-def _latest_hour_of_watchlist(path):
-    df = pd.read_csv(path, parse_dates=["hour_start_iso"])
-    return df["hour_start_iso"].dt.floor("h").max() if not df.empty else None
-
-
-def _latest_hour_of_alerts(path):
-    df = pd.read_csv(path, parse_dates=["ts"])
-    return pd.to_datetime(df["ts"], utc=True, errors="coerce").dt.floor("h").max() if not df.empty else None
+    return note + _fmt_table(latest, include_cols, max_rows=len(latest))
 
 
 def _format_alert_rows(df: pd.DataFrame) -> str:
@@ -85,7 +125,7 @@ def _format_alert_rows(df: pd.DataFrame) -> str:
         buy = int(r.get("buy_alert", 0) or 0)
         sell = int(r.get("sell_alert", 0) or 0)
         score = r.get("signal_score", None)
-
+        side = ""
         if buy == 1:
             side = "BUY"
         elif sell == 1:
@@ -95,39 +135,52 @@ def _format_alert_rows(df: pd.DataFrame) -> str:
                 side = "BUY" if float(score) < 0 else "SELL"
             except Exception:
                 side = ""
-        else:
-            side = ""
 
         ts = r.get("ts")
-        ts_str = ts.strftime("%Y-%m-%d %H:%M:%SZ") if hasattr(ts, "strftime") else (str(ts) if ts is not None else "")
+        ts = pd.to_datetime(ts, utc=True, errors="coerce")
+        ts_str = ts.strftime("%Y-%m-%d %H:%M:%SZ") if pd.notna(ts) else ""
 
         conf = r.get("alert_confidence", "")
         close = r.get("close", "")
+        reasons = r.get("alert_reasons", "") or r.get("reasons", "")
+
         extras = []
         if "rsi_14" in r and pd.notna(r["rsi_14"]):
-            extras.append(f"RSI={float(r['rsi_14']):.1f}")
+            try:
+                extras.append(f"RSI={float(r['rsi_14']):.1f}")
+            except Exception:
+                pass
         if "bb_pctB" in r and pd.notna(r["bb_pctB"]):
-            extras.append(f"%B={float(r['bb_pctB']):.2f}")
+            try:
+                extras.append(f"%B={float(r['bb_pctB']):.2f}")
+            except Exception:
+                pass
         meta = (" | " + " ".join(extras)) if extras else ""
 
-        conf_str  = f"{int(conf):d}%"     if conf == conf and conf != "" else ""
-        score_str = f"{float(score):.2f}" if score == score and score != "" else ""
-        close_str = f"{float(close):.2f}" if close == close and close != "" else ""
+        conf_str  = (f"{int(conf):d}%"     if isinstance(conf, (int, float)) and conf == conf else
+                     (f"{int(float(conf))}%" if isinstance(conf, str) and conf.strip() else ""))
+        score_str = (f"{float(score):.2f}" if isinstance(score, (int, float)) and score == score else
+                     (f"{float(score):.2f}" if isinstance(score, str) and score.strip() else ""))
+        close_str = (f"{float(close):.2f}" if isinstance(close, (int, float)) and close == close else
+                     (f"{float(close):.2f}" if isinstance(close, str) and close.strip() else ""))
 
-        out.append(f"{ts_str:20} {side:4} close={close_str:>8} score={score_str:>6} conf={conf_str:>3}  {r.get('alert_reasons','')}{meta}")
+        out.append(f"{ts_str:20} {side:4} close={close_str:>8} score={score_str:>6} conf={conf_str:>4}  {reasons}{meta}")
     return "\n".join(out)
 
 
-def _load_hype_alerts(alerts_csv: Path, force_hour=None):
+def _load_hype_alerts(alerts_csv: Path, reference_hour=None):
     """
-    Returns (alerts_block_text, has_latest_alerts: bool, latest_hour_str: str|None)
-    Qualifying alerts:
-      - Flags (buy/sell) OR score thresholds BUY_THR/SELL_THR
-      - Apply ALERT_MIN_CONF if present
-      - Restrict to latest hour when ALERT_ONLY_LATEST=1 (with sensible fallback)
+    Returns (alerts_block_text, has_alerts: bool, reference_hour_str: str|None)
+
+    Behavior (last-24h window):
+      - Qualify rows by flags OR thresholds, with optional confidence
+      - Show all qualifying rows whose ts >= (reference_hour - ALERT_LOOKBACK_HOURS)
+      - Header reads: '=== HYPE Alerts (last Xh) ==='
     """
+    lookback_hours = int(env("ALERT_LOOKBACK_HOURS", "24"))
     if not alerts_csv.exists():
         return "(no hype_alerts.csv found yet)", False, None
+
     try:
         df = pd.read_csv(alerts_csv, parse_dates=["ts"])
     except Exception as e:
@@ -135,11 +188,14 @@ def _load_hype_alerts(alerts_csv: Path, force_hour=None):
     if df.empty:
         return "(no alerts yet)", False, None
 
-    # Normalize timestamps early
+    # normalize timestamps and compute hour bucket
     df["ts"] = pd.to_datetime(df["ts"], utc=True, errors="coerce")
+    df = df[df["ts"].notna()].copy()
+    if df.empty:
+        return "(no alerts yet)", False, None
     df["ts_hour"] = df["ts"].dt.floor("h")
 
-    # Build qualifying mask = flags OR thresholds (and confidence)
+    # thresholds + flags
     min_conf = float(env("ALERT_MIN_CONF", "0"))
     flags = (df.get("buy_alert", 0) == 1) | (df.get("sell_alert", 0) == 1)
     buy_thr = float(env("BUY_THR", "-3"))
@@ -152,31 +208,21 @@ def _load_hype_alerts(alerts_csv: Path, force_hour=None):
         mask &= df["alert_confidence"].fillna(0) >= min_conf
 
     hits = df[mask].copy()
-    only_latest = env("ALERT_ONLY_LATEST", "1").lower() in ("1","true","yes")
 
-    # Choose hour to render
-    requested_hour = force_hour or df["ts_hour"].max()
-    latest_hits_hour = hits["ts_hour"].max() if not hits.empty else None
+    # pick reference hour for window end
+    ref = reference_hour or df["ts_hour"].max()
+    ref_str = ref.strftime("%Y-%m-%d %H:%MZ") if pd.notna(ref) else None
+    cutoff = (ref - pd.Timedelta(hours=lookback_hours)) if pd.notna(ref) else None
 
-    # If we want only-latest but nothing at the requested hour, fall back to the most recent hour that HAS hits
-    render_hour = requested_hour
-    if only_latest and (hits.empty or hits[hits["ts_hour"] == requested_hour].empty):
-        render_hour = latest_hits_hour
-
-    if only_latest:
-        view = hits[hits["ts_hour"] == render_hour].copy() if not hits.empty else hits
-        header_time = render_hour.strftime("%Y-%m-%d %H:%MZ") if pd.notna(render_hour) else "n/a"
-        header = f"=== HYPE Alerts (latest hour: {header_time}) ==="
+    if cutoff is not None:
+        view = hits[hits["ts"] >= cutoff].copy()
     else:
-        lookback = int(env("ALERT_LOOKBACK_ROWS", "24"))
-        view = hits.tail(lookback)
-        header = "=== HYPE Alerts (recent) ==="
+        view = hits.copy()
 
+    header = f"=== HYPE Alerts (last {lookback_hours}h) ==="
     text = _format_alert_rows(view if not view.empty else view)
-    has_latest_alerts = not view.empty
-    latest_hour_str = (render_hour.strftime("%Y-%m-%d %H:%MZ") if pd.notna(render_hour) else None)
-    return header + "\n" + text, has_latest_alerts, latest_hour_str
-
+    has_alerts = not view.empty
+    return header + "\n" + text, has_alerts, ref_str
 
 
 def _build_body(watchlist_txt: str, alerts_block: str) -> str:
@@ -240,46 +286,45 @@ def send_email(subject: str, body: str):
 
 
 def main():
+    DEBUG = env("DEBUG", "0").lower() in ("1", "true", "yes")
+
+    # paths
     input_path = Path(env("INPUT", "data/watchlist.csv")).resolve()
     data_dir = Path(env("DATA_DIR", str(input_path.parent))).resolve()
     alerts_file = Path(env("ALERTS_FILE", "hype_alerts.csv"))
     alerts_path = alerts_file if alerts_file.is_absolute() else (data_dir / alerts_file)
     alerts_path = alerts_path.resolve()
 
-    # Prefer the alerts hour; fall back to watchlist hour
+    # reference hour (alerts preferred, fallback to watchlist)
     watch_last = _latest_hour_of_watchlist(input_path) if input_path.exists() else None
     alert_last = _latest_hour_of_alerts(alerts_path) if alerts_path.exists() else None
-    target_hour = alert_last or watch_last
+    reference_hour = alert_last or watch_last
 
-    # NEW: honor FORCE_HOUR if provided (e.g., "2025-09-22T02:00:00Z")
+    # allow a manual pin (optional)
     force = env("FORCE_HOUR", "")
     if force:
         try:
-            # requires pandas imported as pd at top
-            target_hour = pd.to_datetime(force, utc=True, errors="coerce").floor("h").to_pydatetime()
+            reference_hour = pd.to_datetime(force, utc=True, errors="coerce").floor("h").to_pydatetime()
         except Exception:
-            pass  # if parse fails, keep the computed target_hour
+            pass
 
-    # Build sections (SINGLE PASS) pinned to target_hour
-    watchlist_txt = _load_watchlist(input_path, force_hour=target_hour)
-    alerts_block, has_latest_alerts, latest_hour_str = _load_hype_alerts(alerts_path, force_hour=target_hour)
+    if DEBUG:
+        print(f"[debug] watch_last={watch_last} alert_last={alert_last} reference_hour={reference_hour}")
 
-    # Email body
+    # build sections
+    watchlist_txt = _load_watchlist(input_path, force_hour=None)
+    alerts_block, has_alerts, ref_hour_str = _load_hype_alerts(alerts_path, reference_hour=reference_hour)
+
     body = _build_body(watchlist_txt, alerts_block)
 
-    # Subject time: prefer the actual hour the alerts block rendered (latest_hour_str),
-    # else fall back to target_hour (or now if None).
-    if latest_hour_str:
-        subject_time = latest_hour_str
-    elif target_hour is not None:
-        subject_time = target_hour.strftime("%Y-%m-%d %H:%MZ")
-    else:
-        subject_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%MZ")
-
+    # subject: include [HYPE Alerts] iff 24h window has hits; stamp with reference_hour
     base_subj = env("SUBJECT_PREFIX", "[HYPE Watchlist]")
-    subject = f"{base_subj} {'[HYPE Alerts] ' if has_latest_alerts else ''}{subject_time}"
+    subject_time = (ref_hour_str or
+                    (reference_hour.strftime("%Y-%m-%d %H:%MZ") if reference_hour is not None
+                     else datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%MZ")))
+    subject = f"{base_subj} {'[HYPE Alerts] ' if has_alerts else ''}{subject_time}"
 
-    # Optional dedupe
+    # optional dedupe
     state_path = Path(env("STATE", ""))
     if state_path:
         try:
@@ -289,8 +334,10 @@ def main():
         except Exception:
             pass
 
-    send_email(subject, body)
+    if DEBUG:
+        print(f"[debug] subject={subject!r} has_alerts={has_alerts}")
 
+    send_email(subject, body)
 
 
 if __name__ == "__main__":
